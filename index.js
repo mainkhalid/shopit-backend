@@ -83,17 +83,23 @@ const Users = mongoose.model("Users", {
 // Default Route
 app.get("/", (req, res) => res.send("Express app is running"));
 
+;
 // Upload Image Endpoint
 app.post("/upload", upload.single("product"), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ success: false, message: "No file uploaded" });
   }
 
+  // Dynamically construct the base URL
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const imageUrl = `${baseUrl}/images/${req.file.filename}`;
+
   res.json({
     success: true,
-    image_url: `http://localhost:${port}/images/${req.file.filename}`,
+    image_url: imageUrl,
   });
 });
+
 
 // Add Product
 app.post("/addproduct", async (req, res) => {
