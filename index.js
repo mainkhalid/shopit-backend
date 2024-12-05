@@ -3,9 +3,10 @@ const mongoose = require("mongoose");
 const multer = require("multer");
 const path = require("path");
 const cors = require("cors");
-const bcrypt = require('bcryptjs');
+const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const fs = require("fs");
+const cloudinary = require("./cloudinaryConfig"); // Import Cloudinary configuration
 require("dotenv").config(); // For environment variables
 
 const app = express();
@@ -31,7 +32,7 @@ if (!fs.existsSync(uploadPath)) {
   fs.mkdirSync(uploadPath, { recursive: true });
 }
 
-// Image Storage Engine
+// Multer setup (temporary local storage)
 const storage = multer.diskStorage({
   destination: uploadPath,
   filename: (req, file, cb) => {
@@ -55,170 +56,33 @@ const upload = multer({
   },
 });
 
-// Serve uploaded images statically
+// Serve uploaded images statically (for local testing)
 app.use("/images", express.static(uploadPath));
 
-// Mongoose Schemas
-const Product = mongoose.model("Product", {
-  id: Number,
-  name: String,
-  image: String,
-  category: String,
-  new_price: Number,
-  old_price: Number,
-  date: { type: Date, default: Date.now },
-  available: { type: Boolean, default: true },
-});
-
-const Users = mongoose.model("Users", {
-  name: { type: String, required: true },
-  email: { type: String, unique: true, required: true },
-  password: { type: String, required: true },
-  cartData: { type: Object },
-  date: { type: Date, default: Date.now },
-});
-
-// Routes
-
-// Default Route
-app.get("/", (req, res) => res.send("Express app is running"));
-
-;
-// Upload Image Endpoint
-app.post("/upload", upload.single("product"), (req, res) => {
+// Upload Image Endpoint (Using Cloudinary)
+app.post("/upload", upload.single("product"), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ success: false, message: "No file uploaded" });
   }
 
-  // Dynamically construct the base URL
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
-  const imageUrl = `${baseUrl}/images/${req.file.filename}`;
-
-  res.json({
-    success: true,
-    image_url: imageUrl,
-  });
-});
-
-
-// Add Product
-app.post("/addproduct", async (req, res) => {
   try {
-    const lastProduct = await Product.findOne().sort({ id: -1 });
-    const newId = lastProduct ? lastProduct.id + 1 : 1;
-
-    const product = new Product({
-      id: newId,
-      ...req.body,
+    // Upload file to Cloudinary
+    const result = await cloudinary.uploader.upload(req.file.path, {
+      folder: "products", // Organize in a specific folder
+      use_filename: true,
+      unique_filename: false,
     });
 
-    await product.save();
-    console.log("Product saved");
-    res.json({ success: true, name: req.body.name });
-  } catch (error) {
-    console.error("Error saving product:", error);
-    res.status(500).json({ success: false, message: "Error saving product" });
-  }
-});
+    // Delete the local file after uploading to Cloudinary
+    fs.unlinkSync(req.file.path);
 
-// Remove Product
-app.post("/removeproduct", async (req, res) => {
-  try {
-    await Product.findOneAndDelete({ id: req.body.id });
-    console.log("Product removed");
-    res.json({ success: true });
-  } catch (error) {
-    console.error("Error removing product:", error);
-    res.status(500).json({ success: false, message: "Error removing product" });
-  }
-});
-
-// Get All Products
-app.get("/allproducts", async (req, res) => {
-  try {
-    const products = await Product.find({});
-    console.log("All products fetched");
-    res.json(products);
-  } catch (error) {
-    console.error("Error fetching products:", error);
-    res.status(500).json({ success: false, message: "Error fetching products" });
-  }
-});
-
-// User Signup
-app.post("/signup", async (req, res) => {
-  try {
-    const { name, email, password } = req.body;
-
-    const existingUser = await Users.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ success: false, message: "User already exists" });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const cart = Array(300).fill(0);
-
-    const user = new Users({
-      name,
-      email,
-      password: hashedPassword,
-      cartData: cart,
+    res.json({
+      success: true,
+      image_url: result.secure_url, // Cloudinary URL
     });
-
-    await user.save();
-
-    const token = jwt.sign({ id: user.id }, jwtSecret);
-    res.json({ success: true, token });
   } catch (error) {
-    console.error("Error during signup:", error);
-    res.status(500).json({ success: false, message: "Error during signup" });
-  }
-});
-
-// User Login
-app.post("/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    const user = await Users.findOne({ email });
-    if (!user) {
-      return res.status(400).json({ success: false, message: "User does not exist" });
-    }
-
-    const isPasswordMatch = await bcrypt.compare(password, user.password);
-    if (!isPasswordMatch) {
-      return res.status(400).json({ success: false, message: "Incorrect password" });
-    }
-
-    const token = jwt.sign({ id: user.id }, jwtSecret);
-    res.json({ success: true, token });
-  } catch (error) {
-    console.error("Error during login:", error);
-    res.status(500).json({ success: false, message: "Error during login" });
-  }
-});
-
-// Fetch New Collections
-app.get("/newcollections", async (req, res) => {
-  try {
-    const newcollection = await Product.find({}).skip(1).limit(8);
-    console.log("New collection fetched");
-    res.json(newcollection);
-  } catch (error) {
-    console.error("Error fetching new collections:", error);
-    res.status(500).json({ success: false, message: "Error fetching new collections" });
-  }
-});
-
-// Fetch Popular Products
-app.get("/popular", async (req, res) => {
-  try {
-    const popular = await Product.find({}).skip(1).limit(3);
-    console.log("Popular products fetched");
-    res.json(popular);
-  } catch (error) {
-    console.error("Error fetching popular products:", error);
-    res.status(500).json({ success: false, message: "Error fetching popular products" });
+    console.error("Error uploading to Cloudinary:", error);
+    res.status(500).json({ success: false, message: "Error uploading image" });
   }
 });
 
@@ -230,4 +94,3 @@ app.listen(port, (error) => {
     console.error("Error starting server:", error);
   }
 });
-
