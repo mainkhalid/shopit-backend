@@ -1,11 +1,12 @@
 const express = require("express");
 const mongoose = require("mongoose");
 const multer = require("multer");
-const path = require("path");
 const cors = require("cors");
-const bcrypt = require('bcryptjs');
+const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const fs = require("fs");
+const path = require("path");
+const { v2: cloudinary } = require("cloudinary");
 require("dotenv").config(); // For environment variables
 
 const app = express();
@@ -16,47 +17,22 @@ const jwtSecret = process.env.JWT_SECRET || "default_secret";
 app.use(express.json());
 app.use(cors());
 
-// Database connection
+// Cloudinary Config
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+// Database Connection
 mongoose
   .connect(process.env.MONGO_URI, {
     useNewUrlParser: true,
+    useUnifiedTopology: true,
     serverSelectionTimeoutMS: 30000,
   })
   .then(() => console.log("Connected to MongoDB"))
   .catch((err) => console.error("Error connecting to MongoDB:", err));
-
-// Ensure upload directory exists
-const uploadPath = "./upload/images";
-if (!fs.existsSync(uploadPath)) {
-  fs.mkdirSync(uploadPath, { recursive: true });
-}
-
-// Image Storage Engine
-const storage = multer.diskStorage({
-  destination: uploadPath,
-  filename: (req, file, cb) => {
-    cb(null, `${file.fieldname}_${Date.now()}${path.extname(file.originalname)}`);
-  },
-});
-
-const upload = multer({
-  storage: storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
-  fileFilter: (req, file, cb) => {
-    const fileTypes = /jpeg|jpg|png|gif/;
-    const extName = fileTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimeType = fileTypes.test(file.mimetype);
-
-    if (extName && mimeType) {
-      cb(null, true);
-    } else {
-      cb(new Error("Only image files are allowed!"));
-    }
-  },
-});
-
-// Serve uploaded images statically
-app.use("/images", express.static(uploadPath));
 
 // Mongoose Schemas
 const Product = mongoose.model("Product", {
@@ -83,24 +59,19 @@ const Users = mongoose.model("Users", {
 // Default Route
 app.get("/", (req, res) => res.send("Express app is running"));
 
-;
 // Upload Image Endpoint
-app.post("/upload", upload.single("product"), async (req, res) => {
+app.post("/upload", multer().single("product"), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ success: false, message: "No file uploaded" });
   }
 
   try {
     // Upload file to Cloudinary
-    const result = await cloudinary.uploader.upload(req.file.path, {
-      folder: "products", // Organize in a specific folder
+    const result = await cloudinary.uploader.upload_stream({
+      folder: "products",
       use_filename: true,
       unique_filename: false,
     });
-
-    // Delete the local file after uploading to Cloudinary
-    fs.unlinkSync(req.file.path);
-
     res.json({
       success: true,
       image_url: result.secure_url, // Cloudinary URL
@@ -110,7 +81,6 @@ app.post("/upload", upload.single("product"), async (req, res) => {
     res.status(500).json({ success: false, message: "Error uploading image" });
   }
 });
-
 
 // Add Product
 app.post("/addproduct", async (req, res) => {
@@ -241,4 +211,3 @@ app.listen(port, (error) => {
     console.error("Error starting server:", error);
   }
 });
-
