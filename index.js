@@ -1,4 +1,5 @@
-const express = require("express");
+require("dotenv").config();
+const express = require("express"); 
 const mongoose = require("mongoose");
 const multer = require("multer");
 const cors = require("cors");
@@ -6,12 +7,13 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const fs = require("fs");
 const path = require("path");
-const { v2: cloudinary } = require("./cloudinaryConfig");
-require("dotenv").config(); // For environment variables
+const cloudinary = require("./cloudinaryConfig");
+
 
 const app = express();
 const port = process.env.PORT || 4000;
 const jwtSecret = process.env.JWT_SECRET || "default_secret";
+
 
 // Middleware
 app.use(express.json());
@@ -55,63 +57,119 @@ app.get("/", (req, res) => res.send("Express app is running"));
 
 // Upload Image Endpoint
 app.post("/upload", multer().single("product"), async (req, res) => {
+  console.log("File received:", req.file); // Log file info
+
   if (!req.file) {
+    console.log("No file received");
     return res.status(400).json({ success: false, message: "No file uploaded" });
   }
 
   try {
-    // Upload file to Cloudinary
-    const result = await cloudinary.uploader.upload_stream({
+    console.log("Uploading file to Cloudinary...");
+
+    // Upload file to Cloudinary using the buffer from multer
+    const result = await cloudinary.uploader.upload(req.file.buffer, {
       folder: "products",
       use_filename: true,
       unique_filename: false,
     });
+
+    console.log("Upload successful:", result.secure_url); // Log the successful upload
     res.json({
       success: true,
       image_url: result.secure_url, // Cloudinary URL
     });
   } catch (error) {
-    console.error("Error uploading to Cloudinary:", error);
-    res.status(500).json({ success: false, message: "Error uploading image" });
+    console.error("Error uploading to Cloudinary:", error); // Log the error
+    // Send a more specific error message
+    res.status(500).json({
+      success: false,
+      message: "Error uploading image to Cloudinary. Please try again later.",
+      error: error.message,  // Log the specific error message from Cloudinary
+    });
   }
 });
+
+
 
 // Add Product
 app.post("/addproduct", async (req, res) => {
   try {
+    const { name, image, category, new_price, old_price, available } = req.body;
+
+    // Validate required fields
+    if (!name || !image || !category || !new_price) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Missing required fields: name, image, category, or new_price." 
+      });
+    }
+
+    // Retrieve the last product ID to assign a new one
     const lastProduct = await Product.findOne().sort({ id: -1 });
     const newId = lastProduct ? lastProduct.id + 1 : 1;
 
+    // Create a new product instance
     const product = new Product({
       id: newId,
-      name: req.body.name,
-      image: req.body.image, // Cloudinary URL from the upload response
-      category: req.body.category,
-      new_price: req.body.new_price,
-      old_price: req.body.old_price,
-      available: req.body.available,
+      name,
+      image, // Cloudinary image URL passed in the request body
+      category,
+      new_price,
+      old_price,
+      available: available !== undefined ? available : true, // Default to true if not provided
     });
 
+    // Save the new product to the database
     await product.save();
-    console.log("Product saved");
-    res.json({ success: true, name: req.body.name });
+
+    console.log("Product saved successfully:", product);
+    res.status(201).json({
+      success: true,
+      message: "Product added successfully.",
+      product,
+    });
   } catch (error) {
-    console.error("Error saving product:", error);
-    res.status(500).json({ success: false, message: "Error saving product" });
+    console.error("Error adding product:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error adding product. Please try again later.",
+    });
   }
 });
 
 // Remove Product
 app.post("/removeproduct", async (req, res) => {
   try {
+    // Find the product by ID
+    const product = await Product.findOne({ id: req.body.id });
+
+    if (!product) {
+      return res.status(404).json({ success: false, message: "Product not found" });
+    }
+
+    // Extract the public ID from the Cloudinary URL
+    const imageUrl = product.image;
+    const publicId = imageUrl.split("/").pop().split(".")[0];  // Extract the public ID from the image URL
+
+    // Delete the image from Cloudinary
+    const cloudinaryResponse = await cloudinary.uploader.destroy(publicId);
+
+    if (cloudinaryResponse.result !== "ok") {
+      return res.status(500).json({ success: false, message: "Error deleting image from Cloudinary" });
+    }
+
+    // Now remove the product from MongoDB
     await Product.findOneAndDelete({ id: req.body.id });
-    console.log("Product removed");
-    res.json({ success: true });
+    console.log("Product and image removed");
+
+    res.json({ success: true, message: "Product and image removed successfully" });
   } catch (error) {
     console.error("Error removing product:", error);
     res.status(500).json({ success: false, message: "Error removing product" });
   }
 });
+
 
 // Get All Products
 app.get("/allproducts", async (req, res) => {
@@ -205,36 +263,46 @@ app.get("/popular", async (req, res) => {
 //update existing products
 const updateProductImages = async () => {
   try {
+    // Check if Cloudinary is initialized properly
+    if (!cloudinary || !cloudinary.uploader) {
+      console.error("Cloudinary is not properly initialized.");
+      return;  // Exit the function if Cloudinary is not initialized
+    }
+
     const products = await Product.find({});
 
     for (let product of products) {
       if (product.image.startsWith("http://localhost:4000/images/")) {
-        const localPath = product.image.replace("http://localhost:4000/", "./");
-        
-        // Upload to Cloudinary
-        const result = await cloudinary.uploader.upload(localPath, {
-          folder: "products",
-          use_filename: true,
-          unique_filename: false,
-        });
+        // Correct the local path based on your file storage directory.
+        const localPath = product.image.replace("http://localhost:4000/", "./upload/");
 
-        // Update the product with the Cloudinary URL
-        product.image = result.secure_url;
-        await product.save();
+        // Ensure that the file exists before uploading
+        if (fs.existsSync(localPath)) {
+          // Upload to Cloudinary
+          const result = await cloudinary.uploader.upload(localPath, {
+            folder: "products",
+            use_filename: true,
+            unique_filename: false,
+          });
 
-        // Delete the local file
-        await fs.promises.unlink(localPath);
+          // Update the product with the Cloudinary URL
+          product.image = result.secure_url;
+          await product.save();
 
-        console.log(`Updated product ${product.id} with Cloudinary URL.`);
+          // Delete the local file after uploading
+          await fs.promises.unlink(localPath);
+
+          console.log(`Updated product ${product.id} with Cloudinary URL.`);
+        } else {
+          console.error(`File not found: ${localPath}`);
+        }
       }
     }
   } catch (error) {
     console.error("Error updating product images:", error);
   }
 };
-
 updateProductImages();
-
 
 // Start the Server
 app.listen(port, (error) => {
