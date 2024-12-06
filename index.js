@@ -6,7 +6,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const fs = require("fs");
 const path = require("path");
-const { v2: cloudinary } = require("cloudinaryConfig");
+const { v2: cloudinary } = require("./cloudinaryConfig");
 require("dotenv").config(); // For environment variables
 
 const app = express();
