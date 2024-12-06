@@ -90,7 +90,12 @@ app.post("/addproduct", async (req, res) => {
 
     const product = new Product({
       id: newId,
-      ...req.body,
+      name: req.body.name,
+      image: req.body.image, // Cloudinary URL from the upload response
+      category: req.body.category,
+      new_price: req.body.new_price,
+      old_price: req.body.old_price,
+      available: req.body.available,
     });
 
     await product.save();
@@ -202,6 +207,40 @@ app.get("/popular", async (req, res) => {
     res.status(500).json({ success: false, message: "Error fetching popular products" });
   }
 });
+
+//update existing products
+const updateProductImages = async () => {
+  try {
+    const products = await Product.find({});
+
+    for (let product of products) {
+      if (product.image.startsWith("http://localhost:4000/images/")) {
+        const localPath = product.image.replace("http://localhost:4000/", "./");
+        
+        // Upload to Cloudinary
+        const result = await cloudinary.uploader.upload(localPath, {
+          folder: "products",
+          use_filename: true,
+          unique_filename: false,
+        });
+
+        // Update the product with the Cloudinary URL
+        product.image = result.secure_url;
+        await product.save();
+
+        // Delete the local file
+        await fs.promises.unlink(localPath);
+
+        console.log(`Updated product ${product.id} with Cloudinary URL.`);
+      }
+    }
+  } catch (error) {
+    console.error("Error updating product images:", error);
+  }
+};
+
+updateProductImages();
+
 
 // Start the Server
 app.listen(port, (error) => {
