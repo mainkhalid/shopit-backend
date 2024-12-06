@@ -6,7 +6,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const fs = require("fs");
 const path = require("path");
-const { v2: cloudinary } = require("cloudinary");
+const { v2: cloudinary } = require("cloudinaryConfig");
 require("dotenv").config(); // For environment variables
 
 const app = express();
@@ -17,12 +17,6 @@ const jwtSecret = process.env.JWT_SECRET || "default_secret";
 app.use(express.json());
 app.use(cors());
 
-// Cloudinary Config
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
 
 // Database Connection
 mongoose
