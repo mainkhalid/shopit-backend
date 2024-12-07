@@ -10,6 +10,7 @@ const path = require("path");
 const cloudinary = require("./cloudinaryConfig");
 
 
+
 const app = express();
 const port = process.env.PORT || 4000;
 const jwtSecret = process.env.JWT_SECRET || "default_secret";
@@ -55,9 +56,22 @@ const Users = mongoose.model("Users", {
 // Default Route
 app.get("/", (req, res) => res.send("Express app is running"));
 
+// Configure Multer to store images in a temporary directory
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, './uploads'); // Save files in the 'uploads' directory
+    },
+    filename: (req, file, cb) => {
+      cb(null, Date.now() + path.extname(file.originalname)); // Generate a unique filename
+    }
+  }),
+});
+
+
 // Upload Image Endpoint
-app.post("/upload", multer().single("product"), async (req, res) => {
-  console.log("File received:", req.file); // Log file info
+app.post("/upload", upload.single("product"), async (req, res) => {
+  console.log("File received:", req.file);
 
   if (!req.file) {
     console.log("No file received");
@@ -67,60 +81,54 @@ app.post("/upload", multer().single("product"), async (req, res) => {
   try {
     console.log("Uploading file to Cloudinary...");
 
-    // Upload file to Cloudinary using the buffer from multer
-    const result = await cloudinary.uploader.upload(req.file.buffer, {
+    // Upload the file from the temporary location to Cloudinary
+    const result = await cloudinary.uploader.upload(req.file.path, {
       folder: "products",
       use_filename: true,
       unique_filename: false,
     });
 
-    console.log("Upload successful:", result.secure_url); // Log the successful upload
-    res.json({
-      success: true,
-      image_url: result.secure_url, // Cloudinary URL
-    });
+    console.log("Upload successful:", result.secure_url);
+    
+    // Delete the temporary file from the server after uploading
+    fs.unlinkSync(req.file.path);  // Clean up the temporary file
+
+    res.json({ success: true, image_url: result.secure_url });
   } catch (error) {
-    console.error("Error uploading to Cloudinary:", error); // Log the error
-    // Send a more specific error message
+    console.error("Error uploading to Cloudinary:", error);
     res.status(500).json({
       success: false,
       message: "Error uploading image to Cloudinary. Please try again later.",
-      error: error.message,  // Log the specific error message from Cloudinary
+      error: error.message,
     });
   }
 });
 
-
-
-// Add Product
+// Add Product Endpoint
 app.post("/addproduct", async (req, res) => {
   try {
     const { name, image, category, new_price, old_price, available } = req.body;
 
-    // Validate required fields
     if (!name || !image || !category || !new_price) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Missing required fields: name, image, category, or new_price." 
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields: name, image, category, or new_price.",
       });
     }
 
-    // Retrieve the last product ID to assign a new one
     const lastProduct = await Product.findOne().sort({ id: -1 });
     const newId = lastProduct ? lastProduct.id + 1 : 1;
 
-    // Create a new product instance
     const product = new Product({
       id: newId,
       name,
-      image, // Cloudinary image URL passed in the request body
+      image, // Cloudinary image URL
       category,
       new_price,
       old_price,
-      available: available !== undefined ? available : true, // Default to true if not provided
+      available: available !== undefined ? available : true,
     });
 
-    // Save the new product to the database
     await product.save();
 
     console.log("Product saved successfully:", product);
