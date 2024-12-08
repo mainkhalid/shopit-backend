@@ -50,16 +50,14 @@ const Users = mongoose.model("Users", {
   cartData: { type: Object },
   date: { type: Date, default: Date.now },
 });
+// Configure Multer to store images in memory
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
 
 // Routes
 
 // Default Route
 app.get("/", (req, res) => res.send("Express app is running"));
-
-// Configure Multer to store images in memory
-const storage = multer.memoryStorage();
-const upload = multer({ storage });
-
 
 // Upload Image Endpoint
 app.post("/upload", upload.single("product"), async (req, res) => {
@@ -73,6 +71,7 @@ app.post("/upload", upload.single("product"), async (req, res) => {
         { folder: "products", use_filename: true, unique_filename: false },
         (error, cloudinaryResult) => {
           if (error) {
+            console.error("Cloudinary upload error:", error);  // Log the detailed error
             return reject(error);
           }
           resolve(cloudinaryResult);
@@ -85,13 +84,15 @@ app.post("/upload", upload.single("product"), async (req, res) => {
 
     res.json({ success: true, image_url: result.secure_url });
   } catch (error) {
-    console.error("Error uploading to Cloudinary:", error.message);
+    console.error("Error uploading to Cloudinary:", error); // Log detailed error
     res.status(500).json({
       success: false,
       message: "Error uploading image to Cloudinary. Please try again later.",
+      error: error.message,  // Send back more information in the response
     });
   }
 });
+
 
 
 // Add Product Endpoint
@@ -259,48 +260,48 @@ app.get("/popular", async (req, res) => {
 });
 
 //update existing products
-// const updateProductImages = async () => {
-//   try {
-//     // Check if Cloudinary is initialized properly
-//     if (!cloudinary || !cloudinary.uploader) {
-//       console.error("Cloudinary is not properly initialized.");
-//       return;  // Exit the function if Cloudinary is not initialized
-//     }
+const updateProductImages = async () => {
+  try {
+    // Check if Cloudinary is initialized properly
+    if (!cloudinary || !cloudinary.uploader) {
+      console.error("Cloudinary is not properly initialized.");
+      return;  // Exit the function if Cloudinary is not initialized
+    }
 
-//     const products = await Product.find({});
+    const products = await Product.find({});
 
-//     for (let product of products) {
-//       if (product.image.startsWith("http://localhost:4000/images/")) {
-//         // Correct the local path based on your file storage directory.
-//         const localPath = product.image.replace("http://localhost:4000/", "./upload/");
+    for (let product of products) {
+      if (product.image.startsWith("http://localhost:4000/images/")) {
+        // Correct the local path based on your file storage directory.
+        const localPath = product.image.replace("http://localhost:4000/", "./upload/");
 
-//         // Ensure that the file exists before uploading
-//         if (fs.existsSync(localPath)) {
-//           // Upload to Cloudinary
-//           const result = await cloudinary.uploader.upload(localPath, {
-//             folder: "products",
-//             use_filename: true,
-//             unique_filename: false,
-//           });
+        // Ensure that the file exists before uploading
+        if (fs.existsSync(localPath)) {
+          // Upload to Cloudinary
+          const result = await cloudinary.uploader.upload(localPath, {
+            folder: "products",
+            use_filename: true,
+            unique_filename: false,
+          });
 
-//           // Update the product with the Cloudinary URL
-//           product.image = result.secure_url;
-//           await product.save();
+          // Update the product with the Cloudinary URL
+          product.image = result.secure_url;
+          await product.save();
 
-//           // Delete the local file after uploading
-//           await fs.promises.unlink(localPath);
+          // Delete the local file after uploading
+          await fs.promises.unlink(localPath);
 
-//           console.log(`Updated product ${product.id} with Cloudinary URL.`);
-//         } else {
-//           console.error(`File not found: ${localPath}`);
-//         }
-//       }
-//     }
-//   } catch (error) {
-//     console.error("Error updating product images:", error);
-//   }
-// };
-// updateProductImages();
+          console.log(`Updated product ${product.id} with Cloudinary URL.`);
+        } else {
+          console.error(`File not found: ${localPath}`);
+        }
+      }
+    }
+  } catch (error) {
+    console.error("Error updating product images:", error);
+  }
+};
+updateProductImages();
 
 // Start the Server
 app.listen(port, (error) => {
