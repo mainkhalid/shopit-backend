@@ -10,7 +10,6 @@ const path = require("path");
 const cloudinary = require("./cloudinaryConfig");
 
 
-
 const app = express();
 const port = process.env.PORT || 4000;
 const jwtSecret = process.env.JWT_SECRET || "default_secret";
@@ -60,7 +59,7 @@ app.get("/", (req, res) => res.send("Express app is running"));
 const upload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => {
-      cb(null, './uploads'); // Save files in the 'uploads' directory
+      cb(null, './upload'); // Save files in the 'upload'folder
     },
     filename: (req, file, cb) => {
       cb(null, Date.now() + path.extname(file.originalname)); // Generate a unique filename
@@ -81,7 +80,6 @@ app.post("/upload", upload.single("product"), async (req, res) => {
   try {
     console.log("Uploading file to Cloudinary...");
 
-    // Upload the file from the temporary location to Cloudinary
     const result = await cloudinary.uploader.upload(req.file.path, {
       folder: "products",
       use_filename: true,
@@ -89,13 +87,13 @@ app.post("/upload", upload.single("product"), async (req, res) => {
     });
 
     console.log("Upload successful:", result.secure_url);
-    
-    // Delete the temporary file from the server after uploading
-    fs.unlinkSync(req.file.path);  // Clean up the temporary file
+
+    // Clean up the temporary file
+    fs.unlinkSync(req.file.path);
 
     res.json({ success: true, image_url: result.secure_url });
   } catch (error) {
-    console.error("Error uploading to Cloudinary:", error);
+    console.error("Error uploading to Cloudinary:", error.message);
     res.status(500).json({
       success: false,
       message: "Error uploading image to Cloudinary. Please try again later.",
@@ -103,6 +101,7 @@ app.post("/upload", upload.single("product"), async (req, res) => {
     });
   }
 });
+
 
 // Add Product Endpoint
 app.post("/addproduct", async (req, res) => {
