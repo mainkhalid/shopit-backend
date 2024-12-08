@@ -18,7 +18,14 @@ const jwtSecret = process.env.JWT_SECRET || "default_secret";
 
 // Middleware
 app.use(express.json());
-app.use(cors());
+app.use(
+  cors({
+    origin: "https://shop-it-admin.onrender.com", // Your frontend's URL
+    methods: "GET,POST,PUT,DELETE,OPTIONS", // Allowed HTTP methods
+    allowedHeaders: "Content-Type,Authorization", // Allowed headers
+    credentials: true, // Allow cookies if needed
+  })
+);
 
 
 // Database Connection
