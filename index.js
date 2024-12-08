@@ -18,14 +18,26 @@ const jwtSecret = process.env.JWT_SECRET || "default_secret";
 
 // Middleware
 app.use(express.json());
+const allowedOrigins = [
+  "https://shop-it-admin.onrender.com", // admin frontend
+  "https://shop-it254.onrender.com",  // enduser url
+];
+
 app.use(
   cors({
-    origin: "https://shop-it-admin.onrender.com", // Your frontend's URL
-    methods: "GET,POST,PUT,DELETE,OPTIONS", // Allowed HTTP methods
-    allowedHeaders: "Content-Type,Authorization", // Allowed headers
-    credentials: true, // Allow cookies if needed
+    origin: function (origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    methods: "GET,POST,PUT,DELETE,OPTIONS",
+    allowedHeaders: "Content-Type,Authorization",
+    credentials: true,
   })
 );
+
 
 
 // Database Connection
