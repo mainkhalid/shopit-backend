@@ -180,6 +180,7 @@ app.post("/removeproduct", async (req, res) => {
 
     // Extract the Cloudinary public ID from the image URL
     const imageUrl = product.image;
+    console.log("Image URL:", imageUrl); // Log the image URL for debugging
     const publicIdMatch = imageUrl.match(/\/([^/]+)\.(jpg|jpeg|png|webp|gif|svg)$/i);
 
     if (!publicIdMatch) {
@@ -190,6 +191,7 @@ app.post("/removeproduct", async (req, res) => {
     }
 
     const publicId = publicIdMatch[1];
+    console.log("Extracted Public ID:", publicId); // Log the extracted public ID for debugging
 
     // Delete the image from Cloudinary
     const cloudinaryResponse = await cloudinary.uploader.destroy(publicId);
