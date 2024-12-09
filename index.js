@@ -159,34 +159,67 @@ app.post("/addproduct", async (req, res) => {
 // Remove Product
 app.post("/removeproduct", async (req, res) => {
   try {
-    // Find the product by ID
-    const product = await Product.findOne({ id: req.body.id });
+    const { id } = req.body;
 
-    if (!product) {
-      return res.status(404).json({ success: false, message: "Product not found" });
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Product ID is required.",
+      });
     }
 
-    // Extract the public ID from the Cloudinary URL
+    // Find the product by ID
+    const product = await Product.findOne({ id });
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found.",
+      });
+    }
+
+    // Extract the Cloudinary public ID from the image URL
     const imageUrl = product.image;
-    const publicId = imageUrl.split("/").pop().split(".")[0];  // Extract the public ID from the image URL
+    const publicIdMatch = imageUrl.match(/\/([^/]+)\.(jpg|jpeg|png|webp|gif|svg)$/i);
+
+    if (!publicIdMatch) {
+      return res.status(500).json({
+        success: false,
+        message: "Invalid image URL format for Cloudinary.",
+      });
+    }
+
+    const publicId = publicIdMatch[1];
 
     // Delete the image from Cloudinary
     const cloudinaryResponse = await cloudinary.uploader.destroy(publicId);
 
     if (cloudinaryResponse.result !== "ok") {
-      return res.status(500).json({ success: false, message: "Error deleting image from Cloudinary" });
+      return res.status(500).json({
+        success: false,
+        message: "Error deleting image from Cloudinary.",
+        cloudinaryResponse,
+      });
     }
 
-    // Now remove the product from MongoDB
-    await Product.findOneAndDelete({ id: req.body.id });
-    console.log("Product and image removed");
+    // Remove the product from MongoDB
+    await Product.findOneAndDelete({ id });
+    console.log(`Product with ID ${id} removed successfully.`);
 
-    res.json({ success: true, message: "Product and image removed successfully" });
+    res.status(200).json({
+      success: true,
+      message: "Product and image removed successfully.",
+    });
   } catch (error) {
     console.error("Error removing product:", error);
-    res.status(500).json({ success: false, message: "Error removing product" });
+    res.status(500).json({
+      success: false,
+      message: "Error removing product.",
+      error: error.message,
+    });
   }
 });
+
 
 
 // Get All Products
