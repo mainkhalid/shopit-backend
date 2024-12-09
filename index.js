@@ -180,10 +180,10 @@ app.post("/removeproduct", async (req, res) => {
 
     // Extract the Cloudinary public ID from the image URL
     const imageUrl = product.image;
-    console.log("Image URL:", imageUrl); // Log the image URL for debugging
     const publicIdMatch = imageUrl.match(/\/([^/]+)\.(jpg|jpeg|png|webp|gif|svg)$/i);
 
     if (!publicIdMatch) {
+      console.error("Invalid image URL format for Cloudinary:", imageUrl);
       return res.status(500).json({
         success: false,
         message: "Invalid image URL format for Cloudinary.",
@@ -191,12 +191,12 @@ app.post("/removeproduct", async (req, res) => {
     }
 
     const publicId = publicIdMatch[1];
-    console.log("Extracted Public ID:", publicId); // Log the extracted public ID for debugging
 
     // Delete the image from Cloudinary
     const cloudinaryResponse = await cloudinary.uploader.destroy(publicId);
 
-    if (cloudinaryResponse.result !== "ok") {
+    if (cloudinaryResponse.result !== "ok" && cloudinaryResponse.result !== "not found") {
+      console.error("Error deleting image from Cloudinary:", cloudinaryResponse);
       return res.status(500).json({
         success: false,
         message: "Error deleting image from Cloudinary.",
@@ -221,6 +221,7 @@ app.post("/removeproduct", async (req, res) => {
     });
   }
 });
+
 
 
 
