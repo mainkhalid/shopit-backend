@@ -60,6 +60,7 @@ const Product = mongoose.model("Product", {
   old_price: Number,
   date: { type: Date, default: Date.now },
   available: { type: Boolean, default: true },
+  features: { type: [String], default: [] },
 });
 
 const Users = mongoose.model("Users", {
@@ -114,11 +115,11 @@ app.post("/upload", upload.single("product"), async (req, res) => {
 
 
 
-// Add Product Endpoint
 app.post("/addproduct", async (req, res) => {
   try {
-    const { name, image, category, new_price, old_price, available } = req.body;
+    const { name, image, category, new_price, old_price, available, features } = req.body;
 
+    // Validate required fields
     if (!name || !image || !category || !new_price) {
       return res.status(400).json({
         success: false,
@@ -126,9 +127,18 @@ app.post("/addproduct", async (req, res) => {
       });
     }
 
+    // Validate and sanitize features (if provided)
+    if (features && !Array.isArray(features)) {
+      return res.status(400).json({
+        success: false,
+        message: "Features must be an array.",
+      });
+    }
+
     const lastProduct = await Product.findOne().sort({ id: -1 });
     const newId = lastProduct ? lastProduct.id + 1 : 1;
 
+    // Create the product object
     const product = new Product({
       id: newId,
       name,
@@ -137,8 +147,10 @@ app.post("/addproduct", async (req, res) => {
       new_price,
       old_price,
       available: available !== undefined ? available : true,
+      features: features || [], // Store features (default to empty array if not provided)
     });
 
+    // Save to the database
     await product.save();
 
     console.log("Product saved successfully:", product);
@@ -155,6 +167,7 @@ app.post("/addproduct", async (req, res) => {
     });
   }
 });
+
 
 // Remove Product
 app.post("/removeproduct", async (req, res) => {
