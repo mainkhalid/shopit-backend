@@ -55,6 +55,7 @@ const Product = mongoose.model("Product", {
   id: Number,
   name: String,
   image: String,
+  imageVersion: { type: Number, default: 1 },
   category: String,
   new_price: Number,
   old_price: Number,
@@ -91,29 +92,33 @@ app.post("/upload", upload.single("product"), async (req, res) => {
         { folder: "products", use_filename: true, unique_filename: false },
         (error, cloudinaryResult) => {
           if (error) {
-            console.error("Cloudinary upload error:", error);  // Log the detailed error
+            console.error("Cloudinary upload error:", error);
             return reject(error);
           }
           resolve(cloudinaryResult);
         }
       );
-
-      // Use streamifier to create a readable stream from the buffer
       streamifier.createReadStream(req.file.buffer).pipe(uploadStream);
     });
 
-    res.json({ success: true, image_url: result.secure_url });
+    // Increment imageVersion and update the database
+    const { id } = req.body; // Assuming the product ID is sent in the request
+    const product = await Product.findOneAndUpdate(
+      { id },
+      { image: result.secure_url, $inc: { imageVersion: 1 } }, // Increment image version
+      { new: true }
+    );
+
+    res.json({ success: true, image_url: product.image });
   } catch (error) {
-    console.error("Error uploading to Cloudinary:", error); // Log detailed error
+    console.error("Error uploading to Cloudinary:", error);
     res.status(500).json({
       success: false,
-      message: "Error uploading image to Cloudinary. Please try again later.",
-      error: error.message,  // Send back more information in the response
+      message: "Error uploading image to Cloudinary.",
+      error: error.message,
     });
   }
 });
-
-
 
 app.post("/addproduct", async (req, res) => {
   try {
@@ -242,8 +247,12 @@ app.post("/removeproduct", async (req, res) => {
 app.get("/allproducts", async (req, res) => {
   try {
     const products = await Product.find({});
-    console.log("All products fetched");
-    res.json(products);
+    res.json(
+      products.map((product) => ({
+        ...product.toObject(),
+        image: `${product.image}?v=${product.imageVersion}`, // Append version for cache busting
+      }))
+    );
   } catch (error) {
     console.error("Error fetching products:", error);
     res.status(500).json({ success: false, message: "Error fetching products" });
@@ -370,6 +379,25 @@ const updateProductImages = async () => {
   }
 };
 updateProductImages();
+
+// Cleanup Script
+const cleanupOrphans = async () => {
+  const products = await Product.find({});
+  const cloudinaryImages = await cloudinary.api.resources({ type: "upload", prefix: "products/" });
+
+  const dbImageUrls = products.map((p) => p.image);
+  const cloudinaryUrls = cloudinaryImages.resources.map((img) => img.secure_url);
+
+  const orphanedImages = cloudinaryUrls.filter((url) => !dbImageUrls.includes(url));
+
+  for (const orphan of orphanedImages) {
+    const publicId = orphan.match(/\/products\/(.+)\./)[1];
+    await cloudinary.uploader.destroy(publicId);
+    console.log(`Deleted orphaned image: ${orphan}`);
+  }
+};
+cleanupOrphans();
+
 
 // Start the Server
 app.listen(port, (error) => {
