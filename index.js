@@ -198,20 +198,15 @@ app.post("/removeproduct", async (req, res) => {
 
     // Extract the Cloudinary public ID from the image URL
     const imageUrl = product.image;
-    const publicIdMatch = imageUrl.match(/\/([^/]+)\.(jpg|jpeg|png|webp|gif|svg)$/i);
+    const urlParts = imageUrl.split('/');
+    const filenameWithExtension = urlParts[urlParts.length - 1]; // Get the last part of the URL
+    const publicId = filenameWithExtension.split('.')[0]; // Remove the file extension
 
-    if (!publicIdMatch) {
-      console.error("Invalid image URL format for Cloudinary:", imageUrl);
-      return res.status(500).json({
-        success: false,
-        message: "Invalid image URL format for Cloudinary.",
-      });
-    }
-
-    const publicId = publicIdMatch[1];
+    // Since images are stored in the "products" folder
+    const cloudinaryPublicId = `products/${publicId}`; // Prepend the folder name
 
     // Delete the image from Cloudinary
-    const cloudinaryResponse = await cloudinary.uploader.destroy(publicId);
+    const cloudinaryResponse = await cloudinary.uploader.destroy(cloudinaryPublicId);
 
     if (cloudinaryResponse.result !== "ok" && cloudinaryResponse.result !== "not found") {
       console.error("Error deleting image from Cloudinary:", cloudinaryResponse);
@@ -239,6 +234,7 @@ app.post("/removeproduct", async (req, res) => {
     });
   }
 });
+
 
 
 
@@ -336,51 +332,10 @@ app.get("/popular", async (req, res) => {
   }
 });
 
-//update existing products
-const updateProductImages = async () => {
-  try {
-    // Check if Cloudinary is initialized properly
-    if (!cloudinary || !cloudinary.uploader) {
-      console.error("Cloudinary is not properly initialized.");
-      return;  // Exit the function if Cloudinary is not initialized
-    }
 
-    const products = await Product.find({});
+// updateProductImages();
 
-    for (let product of products) {
-      if (product.image.startsWith("http://localhost:4000/images/")) {
-        // Correct the local path based on your file storage directory.
-        const localPath = product.image.replace("http://localhost:4000/", "./upload/");
-
-        // Ensure that the file exists before uploading
-        if (fs.existsSync(localPath)) {
-          // Upload to Cloudinary
-          const result = await cloudinary.uploader.upload(localPath, {
-            folder: "products",
-            use_filename: true,
-            unique_filename: false,
-          });
-
-          // Update the product with the Cloudinary URL
-          product.image = result.secure_url;
-          await product.save();
-
-          // Delete the local file after uploading
-          await fs.promises.unlink(localPath);
-
-          console.log(`Updated product ${product.id} with Cloudinary URL.`);
-        } else {
-          console.error(`File not found: ${localPath}`);
-        }
-      }
-    }
-  } catch (error) {
-    console.error("Error updating product images:", error);
-  }
-};
-updateProductImages();
-
-// Cleanup Script
+// Cleanup Script bfcz
 const cleanupOrphans = async () => {
   const products = await Product.find({});
   const cloudinaryImages = await cloudinary.api.resources({ type: "upload", prefix: "products/" });
