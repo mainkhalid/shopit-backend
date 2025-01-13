@@ -80,46 +80,72 @@ const upload = multer({ storage });
 // Default Route
 app.get("/", (req, res) => res.send("Express app is running"));
 
-// Upload Image Endpoint
+// Upload Image and Create Product Endpoint
 app.post("/upload", upload.single("product"), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ success: false, message: "No file uploaded" });
+  const { name, category, new_price, old_price, available, features } = req.body;
+
+  if (!name || !category || !new_price) {
+    return res.status(400).json({
+      success: false,
+      message: "Missing required fields: name, category, or new_price.",
+    });
   }
 
   try {
-    const result = await new Promise((resolve, reject) => {
-      const uploadStream = cloudinary.uploader.upload_stream(
-        { folder: "products", use_filename: true, unique_filename: false },
-        (error, cloudinaryResult) => {
-          if (error) {
-            console.error("Cloudinary upload error:", error);
-            return reject(error);
+    // Generate a new product ID
+    const lastProduct = await Product.findOne().sort({ id: -1 });
+    const newId = lastProduct ? lastProduct.id + 1 : 1;
+
+    // Upload the image to Cloudinary
+    let imageUrl = null;
+    if (req.file) {
+      const result = await new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+          { folder: "products", use_filename: true, unique_filename: false },
+          (error, cloudinaryResult) => {
+            if (error) {
+              console.error("Cloudinary upload error:", error);
+              return reject(error);
+            }
+            resolve(cloudinaryResult);
           }
-          resolve(cloudinaryResult);
-        }
-      );
-      streamifier.createReadStream(req.file.buffer).pipe(uploadStream);
+        );
+        streamifier.createReadStream(req.file.buffer).pipe(uploadStream);
+      });
+      imageUrl = result.secure_url;
+    }
+
+    // Create a new product with the uploaded image
+    const product = new Product({
+      id: newId,
+      name,
+      image: imageUrl, // Cloudinary URL
+      category,
+      new_price,
+      old_price: old_price || 0,
+      available: available !== undefined ? available : true,
+      features: features || [],
     });
 
-    // Increment imageVersion and update the database
-    const { id } = req.body; // Assuming the product ID is sent in the request
-    const product = await Product.findOneAndUpdate(
-      { id },
-      { image: result.secure_url, $inc: { imageVersion: 1 } }, // Increment image version
-      { new: true }
-    );
+    // Save the product to the database
+    await product.save();
 
-    res.json({ success: true, image_url: product.image });
+    console.log("Product saved successfully:", product);
+    res.status(201).json({
+      success: true,
+      message: "Product added successfully.",
+      product,
+    });
   } catch (error) {
-    console.error("Error uploading to Cloudinary:", error);
+    console.error("Error adding product:", error);
     res.status(500).json({
       success: false,
-      message: "Error uploading image to Cloudinary.",
-      error: error.message,
+      message: "Error adding product. Please try again later.",
     });
   }
 });
 
+//add product endpoint
 app.post("/addproduct", async (req, res) => {
   try {
     const { name, image, category, new_price, old_price, available, features } = req.body;
@@ -235,10 +261,6 @@ app.post("/removeproduct", async (req, res) => {
   }
 });
 
-
-
-
-
 // Get All Products
 app.get("/allproducts", async (req, res) => {
   try {
@@ -332,8 +354,6 @@ app.get("/popular", async (req, res) => {
   }
 });
 
-
-// updateProductImages();
 
 // Cleanup Script bfcz
 const cleanupOrphans = async () => {
