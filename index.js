@@ -81,40 +81,47 @@ const upload = multer({ storage });
 app.get("/", (req, res) => res.send("Express app is running"));
 
 // Upload Image Endpoint
-app.post("/upload", upload.single("product"), async (req, res) => {
-  console.log("File received:", req.file);
-
+app.post("/upload", multer().single("product"), async (req, res) => {
   if (!req.file) {
-    console.log("No file received");
     return res.status(400).json({ success: false, message: "No file uploaded" });
   }
 
   try {
-    console.log("Uploading file to Cloudinary...");
-
-    // Upload the file from the temporary location to Cloudinary
-    const result = await cloudinary.uploader.upload(req.file.path, {
+    // Upload file to Cloudinary
+    const result = await cloudinary.uploader.upload_stream({
       folder: "products",
       use_filename: true,
       unique_filename: false,
     });
-
-    console.log("Upload successful:", result.secure_url);
-    
-    // Delete the temporary file from the server after uploading
-    fs.unlinkSync(req.file.path);  // Clean up the temporary file
-
-    res.json({ success: true, image_url: result.secure_url });
+    res.json({
+      success: true,
+      image_url: result.secure_url, // Cloudinary URL
+    });
   } catch (error) {
     console.error("Error uploading to Cloudinary:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error uploading image to Cloudinary. Please try again later.",
-      error: error.message,
-    });
+    res.status(500).json({ success: false, message: "Error uploading image" });
   }
 });
 
+// Add Product
+app.post("/addproduct", async (req, res) => {
+  try {
+    const lastProduct = await Product.findOne().sort({ id: -1 });
+    const newId = lastProduct ? lastProduct.id + 1 : 1;
+
+    const product = new Product({
+      id: newId,
+      ...req.body,
+    });
+
+    await product.save();
+    console.log("Product saved");
+    res.json({ success: true, name: req.body.name });
+  } catch (error) {
+    console.error("Error saving product:", error);
+    res.status(500).json({ success: false, message: "Error saving product" });
+  }
+});
 
 
 // Remove Product
