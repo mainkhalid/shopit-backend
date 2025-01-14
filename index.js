@@ -87,38 +87,49 @@ app.post("/upload", upload.single("product"), async (req, res) => {
   }
 
   try {
-    // Upload file to Cloudinary
-    const result = await cloudinary.uploader.upload(req.file.path, {
-      folder: "products", // Organize in a specific folder
-      use_filename: true,
-      unique_filename: false,
-    });
+    // Log the uploaded file for debugging
+    console.log("Uploaded file:", req.file);
 
-    // Delete the local file after uploading to Cloudinary
-    fs.unlinkSync(req.file.path);
+    // Upload file to Cloudinary using the buffer
+    const result = await cloudinary.uploader.upload_stream(
+      { folder: "products", use_filename: true, unique_filename: false },
+      (error, result) => {
+        if (error) {
+          console.error("Cloudinary upload error:", error);
+          return res.status(500).json({ success: false, message: "Error uploading image" });
+        }
 
-    // Update the database with the Cloudinary URL
-    const updatedProduct = await Product.findOneAndUpdate(
-      { id: req.body.id }, // Match the product by ID
-      { image: result.secure_url }, // Update the image field with the Cloudinary URL
-      { new: true } // Return the updated document
+        // Update the database with the Cloudinary URL
+        Product.findOneAndUpdate(
+          { id: req.body.id },
+          { image: result.secure_url },
+          { new: true }
+        )
+          .then((updatedProduct) => {
+            if (!updatedProduct) {
+              return res.status(404).json({ success: false, message: "Product not found" });
+            }
+
+            res.json({
+              success: true,
+              image_url: result.secure_url,
+              product: updatedProduct,
+            });
+          })
+          .catch((dbError) => {
+            console.error("Database update error:", dbError);
+            res.status(500).json({ success: false, message: "Error updating product in database" });
+          });
+      }
     );
 
-    if (!updatedProduct) {
-      return res.status(404).json({ success: false, message: "Product not found" });
-    }
-
-    res.json({
-      success: true,
-      image_url: result.secure_url, // Cloudinary URL
-      product: updatedProduct,
-    });
+    // Write the file buffer to Cloudinary
+    result.end(req.file.buffer);
   } catch (error) {
-    console.error("Error uploading to Cloudinary:", error);
-    res.status(500).json({ success: false, message: "Error uploading image" });
+    console.error("Error during upload process:", error);
+    res.status(500).json({ success: false, message: "Unexpected error during upload" });
   }
 });
-
 
 // Add Product
 app.post("/addproduct", async (req, res) => {
