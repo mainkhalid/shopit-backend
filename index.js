@@ -80,28 +80,45 @@ const upload = multer({ storage });
 // Default Route
 app.get("/", (req, res) => res.send("Express app is running"));
 
-// Upload Image Endpoint
-app.post("/upload", multer().single("product"), async (req, res) => {
+// Upload Image Endpoint(Cloudinary)
+app.post("/upload", upload.single("product"), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ success: false, message: "No file uploaded" });
   }
 
   try {
     // Upload file to Cloudinary
-    const result = await cloudinary.uploader.upload_stream({
-      folder: "products",
+    const result = await cloudinary.uploader.upload(req.file.path, {
+      folder: "products", // Organize in a specific folder
       use_filename: true,
       unique_filename: false,
     });
+
+    // Delete the local file after uploading to Cloudinary
+    fs.unlinkSync(req.file.path);
+
+    // Update the database with the Cloudinary URL
+    const updatedProduct = await Product.findOneAndUpdate(
+      { id: req.body.id }, // Match the product by ID
+      { image: result.secure_url }, // Update the image field with the Cloudinary URL
+      { new: true } // Return the updated document
+    );
+
+    if (!updatedProduct) {
+      return res.status(404).json({ success: false, message: "Product not found" });
+    }
+
     res.json({
       success: true,
       image_url: result.secure_url, // Cloudinary URL
+      product: updatedProduct,
     });
   } catch (error) {
     console.error("Error uploading to Cloudinary:", error);
     res.status(500).json({ success: false, message: "Error uploading image" });
   }
 });
+
 
 // Add Product
 app.post("/addproduct", async (req, res) => {
