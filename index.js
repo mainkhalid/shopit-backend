@@ -80,124 +80,42 @@ const upload = multer({ storage });
 // Default Route
 app.get("/", (req, res) => res.send("Express app is running"));
 
-// Upload Image and Create Product Endpoint
+// Upload Image Endpoint
 app.post("/upload", upload.single("product"), async (req, res) => {
-  const { name, category, new_price, old_price, available, features } = req.body;
+  console.log("File received:", req.file);
 
-  if (!name || !category || !new_price) {
-    return res.status(400).json({
-      success: false,
-      message: "Missing required fields: name, category, or new_price.",
-    });
+  if (!req.file) {
+    console.log("No file received");
+    return res.status(400).json({ success: false, message: "No file uploaded" });
   }
 
   try {
-    // Generate a new product ID
-    const lastProduct = await Product.findOne().sort({ id: -1 });
-    const newId = lastProduct ? lastProduct.id + 1 : 1;
+    console.log("Uploading file to Cloudinary...");
 
-    // Upload the image to Cloudinary
-    let imageUrl = null;
-    if (req.file) {
-      const result = await new Promise((resolve, reject) => {
-        const uploadStream = cloudinary.uploader.upload_stream(
-          { folder: "products", use_filename: true, unique_filename: false },
-          (error, cloudinaryResult) => {
-            if (error) {
-              console.error("Cloudinary upload error:", error);
-              return reject(error);
-            }
-            resolve(cloudinaryResult);
-          }
-        );
-        streamifier.createReadStream(req.file.buffer).pipe(uploadStream);
-      });
-      imageUrl = result.secure_url;
-    }
-
-    // Create a new product with the uploaded image
-    const product = new Product({
-      id: newId,
-      name,
-      image: imageUrl, // Cloudinary URL
-      category,
-      new_price,
-      old_price: old_price || 0,
-      available: available !== undefined ? available : true,
-      features: features || [],
+    // Upload the file from the temporary location to Cloudinary
+    const result = await cloudinary.uploader.upload(req.file.path, {
+      folder: "products",
+      use_filename: true,
+      unique_filename: false,
     });
 
-    // Save the product to the database
-    await product.save();
+    console.log("Upload successful:", result.secure_url);
+    
+    // Delete the temporary file from the server after uploading
+    fs.unlinkSync(req.file.path);  // Clean up the temporary file
 
-    console.log("Product saved successfully:", product);
-    res.status(201).json({
-      success: true,
-      message: "Product added successfully.",
-      product,
-    });
+    res.json({ success: true, image_url: result.secure_url });
   } catch (error) {
-    console.error("Error adding product:", error);
+    console.error("Error uploading to Cloudinary:", error);
     res.status(500).json({
       success: false,
-      message: "Error adding product. Please try again later.",
+      message: "Error uploading image to Cloudinary. Please try again later.",
+      error: error.message,
     });
   }
 });
 
-//add product endpoint
-app.post("/addproduct", async (req, res) => {
-  try {
-    const { name, image, category, new_price, old_price, available, features } = req.body;
 
-    // Validate required fields
-    if (!name || !image || !category || !new_price) {
-      return res.status(400).json({
-        success: false,
-        message: "Missing required fields: name, image, category, or new_price.",
-      });
-    }
-
-    // Validate and sanitize features (if provided)
-    if (features && !Array.isArray(features)) {
-      return res.status(400).json({
-        success: false,
-        message: "Features must be an array.",
-      });
-    }
-
-    const lastProduct = await Product.findOne().sort({ id: -1 });
-    const newId = lastProduct ? lastProduct.id + 1 : 1;
-
-    // Create the product object
-    const product = new Product({
-      id: newId,
-      name,
-      image, // Cloudinary image URL
-      category,
-      new_price,
-      old_price,
-      available: available !== undefined ? available : true,
-      features: features || [], // Store features (default to empty array if not provided)
-    });
-
-    // Save to the database
-    await product.save();
-
-    console.log("Product saved successfully:", product);
-    res.status(201).json({
-      success: true,
-      message: "Product added successfully.",
-      product,
-    });
-  } catch (error) {
-    console.error("Error adding product:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error adding product. Please try again later.",
-    });
-  }
-});
 
 // Remove Product
 app.post("/removeproduct", async (req, res) => {
