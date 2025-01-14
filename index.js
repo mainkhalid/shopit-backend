@@ -199,7 +199,6 @@ app.post("/addproduct", async (req, res) => {
   }
 });
 
-
 // Remove Product
 app.post("/removeproduct", async (req, res) => {
   try {
