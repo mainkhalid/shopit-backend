@@ -71,16 +71,8 @@ const Users = mongoose.model("Users", {
   cartData: { type: Object },
   date: { type: Date, default: Date.now },
 });
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "uploads/"); // Store files temporarily on the disk
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname)); // Use original filename
-  }
-});
-const upload = multer({ storage });
-
+const multer = require("multer");
+const upload = multer({ storage: multer.memoryStorage() });
 // Routes
 
 // Default Route
@@ -88,38 +80,25 @@ app.get("/", (req, res) => res.send("Express app is running"));
 
 // Upload Endpoint
 app.post("/upload", upload.single("product"), async (req, res) => {
-  console.log("File received:", req.file);
-
-  if (!req.file) {
-    console.log("No file received");
-    return res.status(400).json({ success: false, message: "No file uploaded" });
-  }
-
   try {
-    console.log("Uploading file to Cloudinary...");
+    console.log("Buffer received:", req.file.buffer);
 
-    // Use the file path for Cloudinary upload
-    const result = await cloudinary.uploader.upload(req.file.path, {
-      folder: "products",
-      use_filename: true,
-      unique_filename: false
-    });
+    const uploadStream = cloudinary.uploader.upload_stream(
+      { folder: "products", use_filename: true, unique_filename: false },
+      (error, result) => {
+        if (error) {
+          console.error("Cloudinary error:", error);
+          return res.status(500).json({ success: false, message: error.message });
+        }
+        console.log("Cloudinary upload result:", result);
+        res.json({ success: true, image_url: result.secure_url });
+      }
+    );
 
-    // Clean up the uploaded file from the local disk
-    fs.unlinkSync(req.file.path);
-
-    res.json({ success: true, image_url: result.secure_url });
+    uploadStream.end(req.file.buffer);
   } catch (error) {
-    console.error("Cloudinary upload error:", error.message);
-
-    // Clean up the file in case of Cloudinary failure
-    fs.unlinkSync(req.file.path);
-
-    res.status(500).json({
-      success: false,
-      message: "Error uploading image to Cloudinary. Please try again later.",
-      error: error.message
-    });
+    console.error("Upload error:", error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 // Add Product
