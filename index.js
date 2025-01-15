@@ -86,7 +86,7 @@ const upload = multer({ storage });
 // Default Route
 app.get("/", (req, res) => res.send("Express app is running"));
 
-// Upload Image Endpoint
+// Upload Endpoint
 app.post("/upload", upload.single("product"), async (req, res) => {
   console.log("File received:", req.file);
 
@@ -98,40 +98,30 @@ app.post("/upload", upload.single("product"), async (req, res) => {
   try {
     console.log("Uploading file to Cloudinary...");
 
-    // Upload the file to Cloudinary using memory buffer
-    const result = await cloudinary.uploader.upload_stream(
-      { folder: "products", use_filename: true, unique_filename: false },
-      (error, cloudinaryResult) => {
-        if (error) {
-          console.error("Cloudinary upload error:", error.message);
-          return res.status(500).json({
-            success: false,
-            message: "Error uploading image to Cloudinary. Please try again later.",
-            error: error.message,
-          });
-        }
+    // Use the file path for Cloudinary upload
+    const result = await cloudinary.uploader.upload(req.file.path, {
+      folder: "products",
+      use_filename: true,
+      unique_filename: false
+    });
 
-        // If upload is successful
-        res.json({ success: true, image_url: cloudinaryResult.secure_url });
-      }
-    );
+    // Clean up the uploaded file from the local disk
+    fs.unlinkSync(req.file.path);
 
-    // Pipe the memory buffer to Cloudinary
-    const bufferStream = new Readable();
-    bufferStream.push(req.file.buffer);
-    bufferStream.push(null);
-    bufferStream.pipe(result);
-
+    res.json({ success: true, image_url: result.secure_url });
   } catch (error) {
-    console.error("Error uploading to Cloudinary:", error.message);
+    console.error("Cloudinary upload error:", error.message);
+
+    // Clean up the file in case of Cloudinary failure
+    fs.unlinkSync(req.file.path);
+
     res.status(500).json({
       success: false,
       message: "Error uploading image to Cloudinary. Please try again later.",
-      error: error.message,
+      error: error.message
     });
   }
 });
-
 // Add Product
 app.post("/addproduct", async (req, res) => {
   try {
