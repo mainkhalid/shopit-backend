@@ -71,7 +71,7 @@ const Users = mongoose.model("Users", {
   cartData: { type: Object },
   date: { type: Date, default: Date.now },
 });
-const multer = require("multer");
+
 const upload = multer({ storage: multer.memoryStorage() });
 // Routes
 
