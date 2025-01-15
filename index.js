@@ -71,8 +71,14 @@ const Users = mongoose.model("Users", {
   cartData: { type: Object },
   date: { type: Date, default: Date.now },
 });
-// Configure Multer to store images in memory
-const storage = multer.memoryStorage();
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "uploads/"); // Store files temporarily on the disk
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + path.extname(file.originalname)); // Use original filename
+  }
+});
 const upload = multer({ storage });
 
 // Routes
@@ -80,54 +86,49 @@ const upload = multer({ storage });
 // Default Route
 app.get("/", (req, res) => res.send("Express app is running"));
 
-// Upload Image Endpoint(Cloudinary)
+// Upload Image Endpoint
 app.post("/upload", upload.single("product"), async (req, res) => {
+  console.log("File received:", req.file);
+
   if (!req.file) {
+    console.log("No file received");
     return res.status(400).json({ success: false, message: "No file uploaded" });
   }
 
   try {
-    // Log the uploaded file for debugging
-    console.log("Uploaded file:", req.file);
+    console.log("Uploading file to Cloudinary...");
 
-    // Upload file to Cloudinary using the buffer
+    // Upload the file to Cloudinary using memory buffer
     const result = await cloudinary.uploader.upload_stream(
       { folder: "products", use_filename: true, unique_filename: false },
-      (error, result) => {
+      (error, cloudinaryResult) => {
         if (error) {
-          console.error("Cloudinary upload error:", error);
-          return res.status(500).json({ success: false, message: "Error uploading image" });
+          console.error("Cloudinary upload error:", error.message);
+          return res.status(500).json({
+            success: false,
+            message: "Error uploading image to Cloudinary. Please try again later.",
+            error: error.message,
+          });
         }
 
-        // Update the database with the Cloudinary URL
-        Product.findOneAndUpdate(
-          { id: req.body.id },
-          { image: result.secure_url },
-          { new: true }
-        )
-          .then((updatedProduct) => {
-            if (!updatedProduct) {
-              return res.status(404).json({ success: false, message: "Product not found" });
-            }
-
-            res.json({
-              success: true,
-              image_url: result.secure_url,
-              product: updatedProduct,
-            });
-          })
-          .catch((dbError) => {
-            console.error("Database update error:", dbError);
-            res.status(500).json({ success: false, message: "Error updating product in database" });
-          });
+        // If upload is successful
+        res.json({ success: true, image_url: cloudinaryResult.secure_url });
       }
     );
 
-    // Write the file buffer to Cloudinary
-    result.end(req.file.buffer);
+    // Pipe the memory buffer to Cloudinary
+    const bufferStream = new Readable();
+    bufferStream.push(req.file.buffer);
+    bufferStream.push(null);
+    bufferStream.pipe(result);
+
   } catch (error) {
-    console.error("Error during upload process:", error);
-    res.status(500).json({ success: false, message: "Unexpected error during upload" });
+    console.error("Error uploading to Cloudinary:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Error uploading image to Cloudinary. Please try again later.",
+      error: error.message,
+    });
   }
 });
 
