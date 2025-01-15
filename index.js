@@ -122,11 +122,11 @@ app.post("/addproduct", async (req, res) => {
 });
 
 
-// Remove Product
 app.post("/removeproduct", async (req, res) => {
   try {
     const { id } = req.body;
 
+    // Validate the request body
     if (!id) {
       return res.status(400).json({
         success: false,
@@ -134,9 +134,8 @@ app.post("/removeproduct", async (req, res) => {
       });
     }
 
-    // Find the product by ID
+    // Find the product by ID in the database
     const product = await Product.findOne({ id });
-
     if (!product) {
       return res.status(404).json({
         success: false,
@@ -146,42 +145,54 @@ app.post("/removeproduct", async (req, res) => {
 
     // Extract the Cloudinary public ID from the image URL
     const imageUrl = product.image;
-    const urlParts = imageUrl.split('/');
-    const filenameWithExtension = urlParts[urlParts.length - 1]; // Get the last part of the URL
-    const publicId = filenameWithExtension.split('.')[0]; // Remove the file extension
 
-    // Since images are stored in the "products" folder
+    if (!imageUrl) {
+      return res.status(400).json({
+        success: false,
+        message: "No image URL associated with the product.",
+      });
+    }
+
+    const urlParts = imageUrl.split('/');
+    const filenameWithExtension = urlParts[urlParts.length - 1].split('?')[0]; // Remove query parameters
+    const publicId = filenameWithExtension.split('.')[0]; // Remove file extension
     const cloudinaryPublicId = `products/${publicId}`; // Prepend the folder name
+
+    console.log("Cloudinary public ID to delete:", cloudinaryPublicId);
 
     // Delete the image from Cloudinary
     const cloudinaryResponse = await cloudinary.uploader.destroy(cloudinaryPublicId);
 
     if (cloudinaryResponse.result !== "ok" && cloudinaryResponse.result !== "not found") {
-      console.error("Error deleting image from Cloudinary:", cloudinaryResponse);
+      console.error("Cloudinary image deletion failed:", cloudinaryResponse);
       return res.status(500).json({
         success: false,
-        message: "Error deleting image from Cloudinary.",
-        cloudinaryResponse,
+        message: "Failed to delete image from Cloudinary.",
+        details: cloudinaryResponse,
       });
     }
+
+    console.log(`Cloudinary image deletion response:`, cloudinaryResponse);
 
     // Remove the product from MongoDB
     await Product.findOneAndDelete({ id });
     console.log(`Product with ID ${id} removed successfully.`);
 
+    // Respond to the client
     res.status(200).json({
       success: true,
-      message: "Product and image removed successfully.",
+      message: "Product and associated image removed successfully.",
     });
   } catch (error) {
     console.error("Error removing product:", error);
     res.status(500).json({
       success: false,
-      message: "Error removing product.",
+      message: "Error occurred while removing product.",
       error: error.message,
     });
   }
 });
+
 
 // Get All Products
 app.get("/allproducts", async (req, res) => {
