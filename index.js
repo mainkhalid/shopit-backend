@@ -19,7 +19,7 @@ const jwtSecret = process.env.JWT_SECRET || "default_secret";
 // Middleware
 app.use(express.json());
 const allowedOrigins = [
-  "https://shop-it-admin.onrender.com", // admin frontend
+  "https://annex-computers.onrender.com", // admin frontend
   "https://shop-it254.onrender.com",  // enduser url
 ];
 
